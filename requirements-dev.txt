@@ -1,0 +1,7 @@
+# 開発用ツール（実行環境には不要）
+# 実行時依存も一緒に入れる
+-r requirements.txt
+
+# リンタ＋フォーマッタ（black/flake8/isort を1本化）
+# 初回 install 後 `ruff --version` の値でピン留めすると再現性が上がる
+ruff
