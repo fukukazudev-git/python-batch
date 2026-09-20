@@ -70,7 +70,9 @@ def _build_row(meeting: dict, summary: dict, model_code: str) -> dict:
         "検証会タイトル": meeting.get("title", ""),
         "イベントコード": meeting.get("eventCode", ""),
         "実施予定日": meeting.get("scheduledDate", ""),
-        "ステータス": meeting.get("status", ""),
+        # API が返す日本語表示名 (statusDisplayName) を出力する。
+        # 未提供時(旧API等)は enum名の status にフォールバックする。
+        "ステータス": meeting.get("statusDisplayName") or meeting.get("status", ""),
         "担当者名": meeting.get("organizerName", ""),
         "テスト総数": summary.get("totalCount", 0),
         "OK数": summary.get("okCount", 0),
