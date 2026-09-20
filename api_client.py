@@ -49,6 +49,14 @@ def get_review_meetings(token: str) -> list[dict]:
     return _get("/api/review-meetings", token)
 
 
+def get_review_meeting_statuses(token: str) -> list[dict]:
+    """GET /api/review-meetings/statuses の検証会ステータス一覧を返す。
+
+    各要素は {"code": <enum名>, "displayName": <日本語表示名>}。
+    """
+    return _get("/api/review-meetings/statuses", token)
+
+
 def get_test_summary(token: str, review_meeting_id: int) -> dict:
     """指定検証会のテスト結果サマリー（GET .../test-summary）を返す。"""
     return _get(f"/api/review-meetings/{review_meeting_id}/test-summary", token)
