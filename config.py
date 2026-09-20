@@ -11,8 +11,9 @@ REQUIRED_COLUMNS = [
     "organizer_username",
 ]
 
-# 現場ヒアリングで確定した検証会ステータス語彙 (検証前 → 検証中 → 完了 / 中断)
-VALID_STATUSES = ["検証前", "検証中", "完了", "中断"]
+# ステータス語彙(検証前/検証中/…)は Spring の enum を単一の情報源とし、
+# import 時に API(GET /api/review-meetings/statuses)から取得する。
+# ここでは定数として持たない(二重管理の回避)。
 DATE_FORMAT = "%Y-%m-%d"
 
 # ヘッダー名の揺れを吸収するマッピング (内部名: 受理する表記のリスト)

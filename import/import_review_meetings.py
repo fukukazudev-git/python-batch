@@ -5,8 +5,9 @@
 
 処理概要:
     CSV を読み込み、ヘッダーの表記ゆれを内部名に正規化し、デフォルト値を補完、
-    バリデーション（全件）を行ってからログインして 1 件ずつ API に登録する。
-    バリデーションでエラーがある場合は 1 件も登録しない。
+    全件バリデーション（必須・日付形式）を行う。その後ログインし、ステータス語彙を
+    API から取得して status（日本語表示名）を enum code へ変換・検証してから、
+    1 件ずつ API に登録する。バリデーションでエラーがある場合は 1 件も登録しない。
 """
 
 import csv
@@ -22,6 +23,7 @@ import config  # noqa: E402
 from api_client import (  # noqa: E402
     create_review_meeting,
     get_models,
+    get_review_meeting_statuses,
     get_users,
     login,
 )
@@ -78,7 +80,9 @@ def validate(row: dict) -> list[str]:
     検証内容:
         a. 必須フィールド（notes 以外）が空でないこと
         b. scheduled_date が YYYY-MM-DD 形式であること
-        c. status が VALID_STATUSES のいずれかであること
+
+    status の語彙チェック・enum code への変換はログイン後に
+    resolve_status_codes() で行う（語彙は API から取得するため）。
 
     Args:
         row: デフォルト補完済みの 1 行。
@@ -101,12 +105,6 @@ def validate(row: dict) -> list[str]:
             datetime.strptime(scheduled_date, config.DATE_FORMAT)
         except ValueError:
             errors.append(f"scheduled_date '{scheduled_date}' が日付形式(YYYY-MM-DD)ではありません")
-
-    # c. ステータス語彙チェック
-    status = str(row.get("status", "")).strip()
-    if status and status not in config.VALID_STATUSES:
-        allowed = "/ ".join(config.VALID_STATUSES)
-        errors.append(f"status '{status}' が不正です（許可値: {allowed}）")
 
     return errors
 
@@ -154,6 +152,27 @@ def _validate_all(rows: list[dict]) -> list[str]:
             joined = ", ".join(str(n) for n in lines)
             errors.append(f"title '{title}' が重複しています（{joined}行目）")
 
+    return errors
+
+
+def resolve_status_codes(rows: list[dict], display_to_code: dict[str, str]) -> list[str]:
+    """各行の status（日本語表示名）を検証し、enum code へ変換して row に書き戻す。
+
+    API から取得した「表示名 -> code」の対応表を単一の情報源として使う。
+    変換できた行は row["status"] を code に置き換える。未知の表示名はエラーとして返し、
+    その行の status は変換しない（呼び出し側でエラーがあれば登録を行わない想定）。
+
+    行番号はヘッダーを 1 行目としたファイル上の行番号（最初のデータ行 = 2）。
+    """
+    errors: list[str] = []
+    for index, row in enumerate(rows, start=2):
+        display = str(row.get("status", "")).strip()
+        code = display_to_code.get(display)
+        if code is None:
+            allowed = " / ".join(display_to_code)
+            errors.append(f"{index}行目: status '{display}' が不正です（許可値: {allowed}）")
+            continue
+        row["status"] = code
     return errors
 
 
@@ -221,7 +240,26 @@ def main(argv: list[str]) -> int:
         print(e)
         return 1
 
-    # ⑦ ユーザー・モデル一覧を取得してキャッシュ（行ごとに API を叩かない）
+    # ⑦ ステータス語彙を API から取得し、各行の status（日本語表示名）を
+    #    enum code へ変換・検証する。不正な表示名があれば 1 件も登録しない。
+    try:
+        statuses = get_review_meeting_statuses(token)
+        display_to_code = {s["displayName"]: s["code"] for s in statuses}
+    except RuntimeError as e:
+        print(e)
+        return 1
+    except KeyError as e:
+        print(f"APIレスポンス形式が想定と異なります: {e}")
+        return 1
+
+    status_errors = resolve_status_codes(rows, display_to_code)
+    if status_errors:
+        print(f"バリデーションエラーが {len(status_errors)} 件あります。登録は行いません。")
+        for message in status_errors:
+            print(f"  - {message}")
+        return 1
+
+    # ⑧ ユーザー・モデル一覧を取得してキャッシュ（行ごとに API を叩かない）
     try:
         users_map = {user["username"]: user["id"] for user in get_users(token)}
         models_map = {model["modelCode"]: model["id"] for model in get_models(token)}
@@ -232,7 +270,7 @@ def main(argv: list[str]) -> int:
         print(f"APIレスポンス形式が想定と異なります: {e}")
         return 1
 
-    # ⑧ 各行を登録
+    # ⑨ 各行を登録
     success_count = 0
     failures: list[str] = []
     for index, row in enumerate(rows, start=2):
@@ -255,7 +293,7 @@ def main(argv: list[str]) -> int:
         except RuntimeError as e:
             failures.append(f"{index}行目: 登録に失敗しました ({e})")
 
-    # ⑨ 結果レポート
+    # ⑩ 結果レポート
     print("=" * 40)
     print("インポート結果")
     print(f"  成功: {success_count} 件")
