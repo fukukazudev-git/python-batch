@@ -8,10 +8,11 @@ def auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
-def login(username: str, password: str) -> str:
+def login_full(username: str, password: str) -> dict:
     """
-    レスポンスのtokenを返す
+    レスポンス全体(token / username / role)を返す
     失敗時はRuntimeErrorを送出
+    role は "ADMIN" / "MEMBER"（API が ROLE_ を除去した enum 名）。
     """
     try:
         resp = requests.post(
@@ -21,7 +22,15 @@ def login(username: str, password: str) -> str:
         resp.raise_for_status()
     except requests.RequestException as e:
         raise RuntimeError(f"ログインに失敗しました: {e}") from e
-    return resp.json()["token"]
+    return resp.json()
+
+
+def login(username: str, password: str) -> str:
+    """
+    レスポンスのtokenを返す
+    失敗時はRuntimeErrorを送出
+    """
+    return login_full(username, password)["token"]
 
 
 def _get(path: str, token: str) -> list | dict:

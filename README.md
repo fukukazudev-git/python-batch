@@ -12,6 +12,20 @@ pip install -r requirements.txt
 ```
 Python 3.11 以上を想定。
 
+## 設定（環境変数 / .env）
+接続先 URL と資格情報は環境変数で与えます。`.env.example` を `.env` にコピーして設定してください
+（`.env` はコミットしないこと。`config.py` が起動時に自動読み込みします）。
+
+| 変数 | 必須 | 既定値 | 説明 |
+|---|---|---|---|
+| `BATCH_API_USERNAME` | ✅ | （なし） | バッチ専用アカウントのユーザー名 |
+| `BATCH_API_PASSWORD` | ✅ | （なし） | 同パスワード |
+| `API_BASE_URL` | ❌ | `http://localhost:8080` | API 接続先 |
+
+資格情報は秘密情報のため既定値を持ちません（未設定で実行するとエラー終了します）。
+ローカル開発では API の初期管理者 (`ADMIN_USERNAME`/`ADMIN_PASSWORD`, 既定 `admin`/`admin`) に合わせてください。
+なお **一括登録は ADMIN ロールのアカウント専用**です（後述の「運用上の注意」を参照）。
+
 ## 開発（任意）
 仮想環境（venv）と ruff（リンタ＋フォーマッタ）を推奨します。
 
@@ -34,8 +48,9 @@ ruff check . --fix
 ## ディレクトリ構成
 ```
 python-batch/
-├── config.py          共通設定
+├── config.py          共通設定（環境変数/.env の読み込み）
 ├── api_client.py      API呼び出し（共通）
+├── .env.example       環境変数のテンプレート（.env にコピーして使用）
 ├── requirements.txt
 ├── import/
 │   ├── import_review_meetings.py
@@ -69,6 +84,18 @@ python import/import_review_meetings.py <csvファイルパス>
 ```
 python import/import_review_meetings.py import/sample.csv
 ```
+
+### 運用上の注意
+- **一括登録は管理者(ADMIN)アカウント専用です。** バッチは認証後に role を確認し、
+  ADMIN 以外では 1 件も登録せず終了します。検証会の単発作成（画面操作）は開催者など
+  各メンバーが行えますが、大量データを一度に投入する一括登録は誤登録の影響が大きいため
+  ADMIN に限定する運用としています。
+  - これはバッチ側の運用ガードです。API は検証会作成自体に ADMIN 制約を課していないため、
+    厳密な権限境界ではありません（ADMIN アカウントの資格情報を限られた担当者にのみ配布する
+    運用とあわせて担保してください）。
+- **本バッチは冪等ではありません。** 登録は 1 件ずつ行われ、途中で失敗しても成功済みの行は
+  ロールバックされません。API 側に title の重複制約は無いため、同じ CSV をそのまま再実行すると
+  成功済みの検証会が重複登録されます。失敗時は「失敗した行」だけを残した CSV で再実行してください。
 
 ## エクスポートバッチ（検証会一覧をCSV/Excelで出力）
 ```
