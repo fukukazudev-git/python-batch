@@ -8,6 +8,9 @@
     全件バリデーション（必須・日付形式）を行う。その後ログインし、ステータス語彙を
     API から取得して status（日本語表示名）を enum code へ変換・検証してから、
     1 件ずつ API に登録する。バリデーションでエラーがある場合は 1 件も登録しない。
+
+    一括登録は管理者(ADMIN)専用。ログイン後に role を確認し、ADMIN 以外では
+    1 件も登録せず終了する。
 """
 
 import csv
@@ -25,7 +28,7 @@ from api_client import (  # noqa: E402
     get_models,
     get_review_meeting_statuses,
     get_users,
-    login,
+    login_full,
 )
 
 # 表記ゆれ（別名）→ 内部名 の逆引き辞書を 1 度だけ構築する。
@@ -115,9 +118,13 @@ def _print_usage() -> None:
 
 
 def _load_rows(csv_path: Path) -> tuple[list[str], list[dict]]:
-    """CSV を UTF-8 で読み込み、(元ヘッダー, 正規化済み行リスト) を返す。"""
+    """CSV を UTF-8 で読み込み、(元ヘッダー, 正規化済み行リスト) を返す。
+
+    Excel の「CSV UTF-8」形式は先頭に BOM が付く。utf-8-sig で開くと BOM の有無に
+    かかわらず読め、BOM が 1 列目のヘッダー名に混入して必須カラム判定が失敗するのを防ぐ。
+    """
     # ブロック内で例外が発生してもwithで必ず閉じる
-    with csv_path.open(encoding="utf-8", newline="") as f:
+    with csv_path.open(encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames or []
         rows = [normalize_headers(row) for row in reader]
@@ -234,10 +241,26 @@ def main(argv: list[str]) -> int:
         return 1
 
     # ⑥ ログイン
+    #    一括登録は ADMIN 専用。認証後に role を確認し、ADMIN 以外では 1 件も登録しない。
+    #    （検証会の単発作成は誰でも可能だが、大量データを一度に投入する一括登録は
+    #      誤登録の影響が大きいため ADMIN に限定する運用とする。）
     try:
-        token = login(config.LOGIN_USERNAME, config.LOGIN_PASSWORD)
+        username, password = config.get_credentials()
+        auth = login_full(username, password)
+        token = auth["token"]
+        role = auth.get("role")
     except RuntimeError as e:
         print(e)
+        return 1
+    except KeyError as e:
+        print(f"APIレスポンス形式が想定と異なります: {e}")
+        return 1
+
+    if role != "ADMIN":
+        print(
+            "一括登録は管理者(ADMIN)アカウントでのみ実行できます。"
+            "ADMIN アカウントで再実行してください。"
+        )
         return 1
 
     # ⑦ ステータス語彙を API から取得し、各行の status（日本語表示名）を

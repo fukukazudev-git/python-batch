@@ -1,6 +1,45 @@
-API_BASE_URL = "http://localhost:8080"
-LOGIN_USERNAME = "admin"
-LOGIN_PASSWORD = "admin"
+import os
+
+# .env を読み込む（ローカル実行向け。CI/本番は実環境変数をそのまま使う）。
+# python-dotenv 未導入でも実環境変数だけで動作するよう、import 失敗は無視する。
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
+# API 接続先。環境（ローカル/ステージング/本番）で切り替える。
+# URL は秘密情報ではないため、ローカル開発向けの既定値のみ持つ。
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8080")
+
+# 検証会管理 API を呼び出すバッチ専用アカウントの資格情報の環境変数名。
+# 秘密情報のため既定値は持たず、実行時に get_credentials() で必須チェックする。
+# ローカル開発では API の初期管理者 (ADMIN_USERNAME/ADMIN_PASSWORD, 既定 admin/admin)
+# に合わせた値を .env / 環境変数に設定する。
+ENV_USERNAME = "BATCH_API_USERNAME"
+ENV_PASSWORD = "BATCH_API_PASSWORD"
+
+
+def get_credentials() -> tuple[str, str]:
+    """バッチ専用アカウントの (username, password) を環境変数から取得する。
+
+    秘密情報のため既定値は持たない。いずれかが未設定・空なら RuntimeError を送出する
+    （誤った既定値で本番 API にログインを試み、アカウントをロックさせる事故を防ぐため）。
+    """
+    username = os.environ.get(ENV_USERNAME)
+    password = os.environ.get(ENV_PASSWORD)
+    missing = [
+        name for name, value in ((ENV_USERNAME, username), (ENV_PASSWORD, password)) if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            "資格情報の環境変数が未設定です: "
+            + ", ".join(missing)
+            + "。.env または環境変数に設定してください。"
+        )
+    return username, password
+
 
 # インポート用: デフォルトを持たない=真に必須の列だけをヘッダー必須にする
 # (status / event_code は COLUMN_DEFAULTS で補完するため、ヘッダー必須にはしない)

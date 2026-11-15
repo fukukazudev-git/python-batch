@@ -151,7 +151,8 @@ def main(argv: list[str]) -> int:
 
     # ② ログイン
     try:
-        token = login(config.LOGIN_USERNAME, config.LOGIN_PASSWORD)
+        username, password = config.get_credentials()
+        token = login(username, password)
     except RuntimeError as e:
         print(e)
         return 1
